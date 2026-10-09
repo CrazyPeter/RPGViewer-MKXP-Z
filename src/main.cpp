@@ -148,15 +148,39 @@ static void mkxpGL_SwapWindow(SDL_Window * /*win*/) {
 
 // Query the EGL surface for real pixel dimensions. SDL_GL_GetDrawableSize
 // would return logical points under ANGLE (no SDL GL context is bound).
-void mkxpGL_GetDrawableSize(SDL_Window * /*win*/, int *w, int *h) {
+//
+// eglQuerySurface only reports what ANGLE cached during the last
+// obtainNextDrawable, so straight after a resize it still answers with the
+// *previous* size. When ANGLE has been running at 3x and that stale answer
+// is the point size, the engine reads it as "the window is 1x" and simply
+// draws the picture into a 1/3-sized corner of the real framebuffer — the
+// "game only occupies the bottom-left corner" symptom, with nothing in the
+// log to explain it.
+//
+// So treat the EGL surface as advisory and prefer the size the layer tree
+// actually reports: that is what the compositor scales, and it is what the
+// picture has to match.
+extern "C" void mkxp_refreshANGLENativeLayerSize(void *sdlWindow, int *outW, int *outH);
+
+void mkxpGL_GetDrawableSize(SDL_Window *win, int *w, int *h) {
     EGLint eglW = 0, eglH = 0;
     eglQuerySurface(s_eglDisplay, s_eglSurface, EGL_WIDTH, &eglW);
     eglQuerySurface(s_eglDisplay, s_eglSurface, EGL_HEIGHT, &eglH);
+
+    int layerW = 0, layerH = 0;
+    mkxp_refreshANGLENativeLayerSize(win, &layerW, &layerH);
+
+    // Only override when the layer tree gives a usable answer; a zero here
+    // means the window is not attached yet and EGL is all we have.
+    if (layerW > 0 && layerH > 0) {
+        if (w) *w = layerW;
+        if (h) *h = layerH;
+        return;
+    }
+
     if (w) *w = eglW;
     if (h) *h = eglH;
 }
-
-extern "C" void mkxp_refreshANGLENativeLayerSize(void *sdlWindow, int *outW, int *outH);
 
 // Called on rotation / resize. eglQuerySurface returns a drawable size
 // cached during the last obtainNextDrawable call (pre-rotation). Drive

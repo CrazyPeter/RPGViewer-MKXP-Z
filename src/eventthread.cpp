@@ -285,7 +285,7 @@ void EventThread::process(RGSSThreadData &rtData)
                         // computes a nonsense backingScaleFactor / winSize /
                         // scOffset on rotation.
                         mkxpGL_RefreshDrawableSize(win, &drwW, &drwH);
-                        
+
                         windowSizeMsg.post(Vec2i(winW, winH));
                         drawableSizeMsg.post(Vec2i(drwW, drwH));
                         resetInputStates();

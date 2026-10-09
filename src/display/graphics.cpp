@@ -874,7 +874,29 @@ struct GraphicsPrivate {
 
             /* Query the actual size in pixels, not units */
             Vec2i drawableSize(winSize);
-            threadData->drawableSizeMsg.poll(drawableSize);
+            if (!threadData->drawableSizeMsg.poll(drawableSize)) {
+                /* No drawable size was posted alongside this window size.
+                 *
+                 * UnidirMessage::poll leaves its argument untouched when the
+                 * queue is empty, so `drawableSize` would silently keep the
+                 * seed value — and that seed is winSize, which is in POINTS.
+                 * Dividing points by points yields backingScaleFactor 1.0 on
+                 * a 3x screen, so scSize collapses to a third of the real
+                 * framebuffer and the picture is drawn into the bottom-left
+                 * corner. That is precisely the "game only occupies a small
+                 * patch" symptom, and it is silent: every number still looks
+                 * self-consistent.
+                 *
+                 * A window size change on this platform always comes with a
+                 * drawable size (EventThread posts both together), so
+                 * reaching here means the pair was lost. Scale the point size
+                 * instead of trusting the seed. */
+                float uiScale = mkxp_getScreenScale();
+                if (uiScale > 0.0f) {
+                    drawableSize = Vec2i((int)(winSize.x * uiScale + 0.5f),
+                                         (int)(winSize.y * uiScale + 0.5f));
+                }
+            }
 
             if (mkxp_debugLogEnabled()) {
                 char buf[256];
