@@ -296,6 +296,61 @@ const char *mkxp_waitForGamePath(void) {
     return pathCopy.c_str();
 }
 
+void mkxp_abandonSession(void) {
+    /* Releases mkxp_waitForGamePath() for a game the engine will never run.
+     *
+     * MV, MZ, Flash and plain HTML5 all play in a WKWebView, so nothing ever
+     * calls mkxp_setGamePath for them. Without this the engine waits for a
+     * game forever — and because the wait pumps the run loop, the app looks
+     * alive right up until the player starts a *native* game, at which point
+     * the engine wakes up with an empty path and setCurrentDirectory("")
+     * throws deep inside filesystem init. The crash lands minutes or one
+     * session away from its cause, in code that has nothing to do with what
+     * the player did.
+     *
+     * An empty path is the signal: main() checks it before touching the
+     * filesystem and goes back to waiting rather than starting up. A native
+     * game sets a real path and is unaffected.
+     */
+    mkxp_setGamePath("");
+}
+
+const char *mkxp_waitForNativeGamePath(void) {
+    /* Waits for a game the engine can actually run.
+     *
+     * mkxp_waitForGamePath() returns as soon as *a* path is set, including
+     * the empty one mkxp_abandonSession() writes — so it cannot be reused
+     * here, or the loop in main() would spin on the same empty string with
+     * no run loop iteration between passes and no way out.
+     *
+     * This waits for the path to be non-empty instead. An empty value is
+     * therefore not a wake-up: it means "still nothing for me", and only a
+     * real path lets the engine proceed. Because a later mkxp_setGamePath
+     * overwrites s_gamePath wholesale, a game started after one was
+     * abandoned still arrives here.
+     */
+    while (true) {
+        {
+            std::lock_guard<std::mutex> lock(s_pathMutex);
+            if (!s_gamePath.empty()) {
+                break;
+            }
+        }
+#if TARGET_OS_IPHONE
+        // Pump the run loop while waiting, for the same reason the first
+        // wait does: UIKit is on this thread and nothing else will drive it.
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, true);
+#else
+        SDL_Delay(50);
+#endif
+    }
+
+    thread_local std::string pathCopy;
+    std::lock_guard<std::mutex> lock(s_pathMutex);
+    pathCopy = s_gamePath;
+    return pathCopy.c_str();
+}
+
 void mkxp_requestTerminate(void) {
     s_terminateRequested.store(true, std::memory_order_release);
 

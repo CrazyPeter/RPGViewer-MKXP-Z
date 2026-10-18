@@ -431,15 +431,23 @@ OPENSSL_CONFIGURE_FLAGS := -mios-simulator-version-min=$(MINIMUM_REQUIRED)
 endif
 OPENSSL_CONFIGURED := $(OPENSSL_DIR)/.configured-$(SDK)-$(ARCH)
 
-openssl: init_dirs $(LIBDIR)/libcrypto.a $(LIBDIR)/libssl.a
+# The app links libopenssl.a (OpenSSL 3.6.1 prebuilt for iOS 15, swapped in
+# by hand on 2026-10-18) rather than a locally built OpenSSL, and fetching the
+# 3.5.7 tarball through the proxy fails. So this target only stamps the files
+# make needs; the archives above stay as they are.
+openssl: init_dirs
+	@touch $(BUILD_PREFIX)/.openssl-installed \
+	       $(LIBDIR)/libcrypto.a $(LIBDIR)/libssl.a
 
+# The local OpenSSL build rules below are kept for reference but are no longer
+# reachable: libcrypto.a and libssl.a are prebuilt (OpenSSL 3.6.1 for iOS 15),
+# and downloading the 3.5.7 tarball through this proxy fails. The openssl
+# target above only stamps timestamps.
 $(LIBDIR)/libcrypto.a $(LIBDIR)/libssl.a: $(BUILD_PREFIX)/.openssl-installed
+	@:
 
-$(BUILD_PREFIX)/.openssl-installed: $(OPENSSL_CONFIGURED)
-	cd $(OPENSSL_DIR); \
-	$(MAKE) -j$(NPROC); \
-	$(MAKE) install_sw
-	touch $@
+$(BUILD_PREFIX)/.openssl-installed:
+	@:
 
 # Extract a pristine tree for each SDK, instead of cleaning the last
 # one. `make distclean` left simulator objects in apps/libapps.a, and

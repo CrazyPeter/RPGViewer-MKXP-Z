@@ -204,6 +204,23 @@ int         mkxp_isGameReady(void);
 void        mkxp_setGamePath(const char *path);
 const char *mkxp_waitForGamePath(void);
 
+/// Releases mkxp_waitForGamePath() for a game the engine will never run.
+///
+/// Call this instead of mkxp_setGamePath when the player picked an MV, MZ,
+/// Flash or HTML5 game: those play in a WKWebView, so the engine is never
+/// given a path and would otherwise wait until a native game arrives and
+/// then fail on the empty path it woke up with.
+void        mkxp_abandonSession(void);
+
+/// Waits for a game the engine can run, ignoring empty paths.
+///
+/// The difference from mkxp_waitForGamePath() is that an empty value is not
+/// a wake-up here. EngineHost::init() calls this after an abandoned session
+/// so the engine can stand by indefinitely — it is the app's own main(), so
+/// returning would take UIKit down with it — and then start normally as soon
+/// as the player starts an RGSS game from the library.
+const char *mkxp_waitForNativeGamePath(void);
+
 // Engine termination
 
 void        mkxp_requestTerminate(void);
@@ -630,6 +647,8 @@ static inline void        mkxp_setGameReady(void) {}
 static inline int         mkxp_isGameReady(void) { return 1; }
 static inline void        mkxp_setGamePath(const char *path) { (void)path; }
 static inline const char *mkxp_waitForGamePath(void) { return NULL; }
+static inline void        mkxp_abandonSession(void) {}
+static inline const char *mkxp_waitForNativeGamePath(void) { return NULL; }
 
 static inline void        mkxp_requestTerminate(void) {}
 static inline int         mkxp_isEngineTerminated(void) { return 0; }

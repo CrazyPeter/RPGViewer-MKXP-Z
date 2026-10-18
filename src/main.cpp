@@ -551,16 +551,40 @@ private:
 
 bool EngineHost::init(int argc, char *argv[]) {
 #if TARGET_OS_IPHONE
-  mkxp_installFatalErrorHandlers();
+    mkxp_installFatalErrorHandlers();
 #endif
-  /* FIRST LAUNCH: wait for Library UI before SDL_Init. SDL_Init
-   * creates a window that would cover the Library UI, so we wait
-   * for the user to pick a game first. */
-  const char *selectedPath = mkxp_waitForGamePath();
-  if (selectedPath && selectedPath[0])
-    snprintf(dataDir_, sizeof(dataDir_), "%s", selectedPath);
+    /* FIRST LAUNCH: wait for Library UI before SDL_Init. SDL_Init
+     * creates a window that would cover the Library UI, so we wait
+     * for the user to pick a game first. */
+    const char *selectedPath = mkxp_waitForGamePath();
+    if (selectedPath && selectedPath[0])
+        snprintf(dataDir_, sizeof(dataDir_), "%s", selectedPath);
 
-  SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
+    /* An empty path means the player chose a game the engine does not run —
+     * MV, MZ, Flash or a plain HTML5 page, all of which play in a WebView.
+     * The host says so with mkxp_abandonSession() because there is no other
+     * way out of the wait above, and continuing would hand an empty string to
+     * setCurrentDirectory() and throw from inside filesystem init.
+     *
+     * Returning would be wrong: this main() *is* the app's main() — the
+     * engine is a static library, not a process it can exit without taking
+     * UIKit down with it. So instead of standing down, go back to waiting.
+     *
+     * Waiting is the correct state rather than a workaround. A WebView game
+     * is not necessarily the last one this launch will play: the player can
+     * go back to the library and start an RGSS game, and this loop is what
+     * hands the engine over when they do. Standing down permanently would
+     * make the second game of a session unplayable, which is the same
+     * single-shot limitation the engine already has, arriving early and for
+     * a game that did not earn it. */
+    if (dataDir_[0] == '\0') {
+        Debug() << "Web game selected; engine standing by.";
+        const char *native = mkxp_waitForNativeGamePath();
+        snprintf(dataDir_, sizeof(dataDir_), "%s", native);
+        Debug() << "Native game claimed the engine; starting up.";
+    }
+
+    SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
   SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
   SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "1");
   SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
