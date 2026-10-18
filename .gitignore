@@ -98,3 +98,9 @@ tests/cpp/build/
 
 # Test host build output
 /build/
+
+# Dependency source trees, cloned by deps/common.make from the pins in
+# upstream's .gitmodules. They are whole Ruby/SDL checkouts with their own
+# .git, not part of this repo.
+/deps/sources/
+/deps/downloads/
