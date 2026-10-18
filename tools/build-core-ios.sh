@@ -130,7 +130,25 @@ if [ "$COUNT" -lt 10 ]; then
     exit 1
 fi
 
+# The flags this tree was built with, recorded next to the objects.
+#
+# Incremental rebuilds below compare source timestamps only, so changing a
+# compiler flag on its own left every object in place. Building at 26.0 and
+# then at 15.0 reported "Up to date" and kept the 26.0 objects, which the
+# linker accepted without complaint — the mismatch only showed up as a crash
+# on a real device. Recording the flags makes the staleness detectable.
+FLAG_STAMP="$OBJ/.build-flags"
+CUR_FLAGS="$SDK|$ARCH|$MIN_OS"
+if [ -f "$FLAG_STAMP" ] && [ "$(cat "$FLAG_STAMP")" = "$CUR_FLAGS" ]; then
+    FLAGS_MATCH=1
+else
+    FLAGS_MATCH=0
+fi
+
 needs_rebuild() {
+    # A change of build flags invalidates every object, regardless of
+    # timestamps.
+    [ "$FLAGS_MATCH" = "1" ] || return 0
     # $1 = object path, $2 = source path (engine-relative)
     [ -f "$1" ] || return 0
     [ "$ENGINE/$2" -nt "$1" ] && return 0
@@ -138,6 +156,10 @@ needs_rebuild() {
     # define shared struct layouts, a coarse check beats silent UB).
     [ -n "$(find "$ENGINE/src" -name '*.h' -newer "$1" -print | head -n 1)" ]
 }
+
+if [ "$FLAGS_MATCH" != "1" ]; then
+    echo "[mkxpz-core] build flags changed (now: $CUR_FLAGS), recompiling everything"
+fi
 
 echo "[mkxpz-core] Compiling engine core for $SDK ($ARCH, min $MIN_OS)..."
 COMPILED=0
@@ -170,12 +192,13 @@ for src in $(list_sources); do
 done
 
 LIB="$OUT/libmkxpz-core.a"
-if [ "$COMPILED" -gt 0 ] || [ ! -f "$LIB" ]; then
+if [ "$COMPILED" -gt 0 ] || [ ! -f "$LIB" ] || [ "$FLAGS_MATCH" != "1" ]; then
     echo "[mkxpz-core] Archiving $LIB ($COMPILED recompiled)..."
     rm -f "$LIB"
     # shellcheck disable=SC2046 # object list is newline-safe (no spaces)
     "$AR" rcs "$LIB" $(find "$OBJ" -name '*.o' | LC_ALL=C sort)
     "$RANLIB" "$LIB"
+    printf '%s' "$CUR_FLAGS" > "$FLAG_STAMP"
 else
     echo "[mkxpz-core] Up to date ($LIB)"
 fi
