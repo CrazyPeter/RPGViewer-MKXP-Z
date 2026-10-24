@@ -1,0 +1,36 @@
+name: Format
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Format job verifies that the formatters would not modify any
+# tracked file. If they would, the job fails with a clear diff
+# so the contributor knows exactly what to run locally.
+
+jobs:
+  cpp:
+    name: C++ (clang-format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: clang-format check
+        uses: DoozyX/clang-format-lint-action@v0.20
+        with:
+          source: "src"
+          extensions: "h,cpp"
+          clangFormatVersion: 18
+
+  # Aggregate gate whose check-run name matches the ruleset's required
+  # "Format" context exactly (same pattern as empo-app's workflows).
+  summary:
+    name: Format
+    needs: [cpp]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every job passed
+        run: |
+          [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "false" ]

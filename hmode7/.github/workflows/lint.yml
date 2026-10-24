@@ -1,0 +1,52 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  cpp:
+    name: C++ (clang-format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: clang-format check
+        # DoozyX is the canonical clang-format CI action (used by
+        # google/benchmark, apache/doris, magma, sgl-project, etc.).
+        uses: DoozyX/clang-format-lint-action@v0.20
+        with:
+          source: "src"
+          extensions: "h,cpp"
+          clangFormatVersion: 18
+
+  markdown:
+    name: Markdown (markdownlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install markdownlint-cli
+        run: bun install --frozen-lockfile
+
+      - name: markdownlint
+        run: |
+          FILES=$(git ls-files '*.md')
+          if [ -n "$FILES" ]; then
+            echo "$FILES" | xargs bun x markdownlint -c .markdownlint.json
+          fi
+
+  # Aggregate gate whose check-run name matches the ruleset's required
+  # "Lint" context exactly (same pattern as empo-app's workflows).
+  summary:
+    name: Lint
+    needs: [cpp, markdown]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every job passed
+        run: |
+          [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "false" ]
