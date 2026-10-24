@@ -104,3 +104,5 @@ tests/cpp/build/
 # .git, not part of this repo.
 /deps/sources/
 /deps/downloads/
+
+./workbuddy

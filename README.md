@@ -1,19 +1,12 @@
 # RPGViewer-MKXP-Z
 
 > RPGViewer 在 iOS / iPadOS 上跑 RPG Maker XP / VX / VX Ace 用的 mkxp-z 引擎。
->
-> **本仓库只有引擎，不含 RPGViewer App 本体。** App 的界面、游戏库、WebView 运行时和业务逻辑都不在这里。
 
-[![License](https://img.shields.io/badge/license-GPLv2%2B-blue.svg)](#与-app-的边界--许可)
-[![Upstream](https://img.shields.io/badge/upstream-mkxp--z-blue.svg)](https://github.com/mkxp-z/mkxp-z)
-
-上游链：`mkxp-z` → [`genexix05/mkxp-z-apple-mobile`](https://github.com/genexix05/mkxp-z-apple-mobile)（Apple mobile fork，最初为 Empo 打造）→ **本仓库**。
 
 ---
 
 ## 目录
 
-- [为什么单独开一个仓库](#为什么单独开一个仓库)
 - [整体架构](#整体架构)
 - [唯一的接口：app_bridge.h](#唯一的接口app_bridgeh)
 - [三个关键设计](#三个关键设计)
@@ -28,33 +21,10 @@
 
 ---
 
-## 为什么单独开一个仓库
-
-引擎本体是 GPLv2+，App 是私有项目。混在一个仓库里只有两个结果：要么整个 App 被迫开源，要么引擎的修改永远无法回馈出去。
-
-拆开之后各归各位：
-
-| | 内容 | 状态 |
-|---|---|---|
-| **本仓库** | mkxp-z 引擎、iOS 平台层、`app_bridge.h` 接口、依赖交叉编译体系、测试 | 开源 |
-| **RPGViewer App** | 游戏库、界面、WebView 运行时（MV / MZ / Flash）、虚拟手柄、存档管理 | 私有 |
-
-这个划分不是事后补的。引擎从一开始就被设计成**不认识宿主**：它不知道调用它的是 RPGViewer 还是别的播放器，所有对外能力收敛在一个 C 头文件里。换一个宿主，只要接上那几十个回调。
-
----
-
 ## 整体架构
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  RPGViewer App  (private, UIKit)                             │
-│                                                              │
-│   Library ── Player ── WebView ── Overlay ── Save            │
-│                                                              │
-│   RPGVEngineBridge        ← 全 App 唯一 import 桥接头的地方   │
-└──────────────────────────┬───────────────────────────────────┘
-                           │  src/app_bridge.h   (纯 C ABI)
-┌──────────────────────────▼───────────────────────────────────┐
 │  mkxp-z core  (this repo, C++ / ObjC++)                      │
 │                                                              │
 │   main.cpp (EngineHost)   display/graphics   audio           │
@@ -121,13 +91,7 @@ SDL、ANGLE 的 EGL 上下文、OpenAL 设备、Ruby VM 全部跨游戏复用。
 
 这条约束直接决定了两件事：会话状态必须在每次启动前重置（否则上一个游戏的快进倍率、作弊开关会漏到下一个），以及——
 
-### 2. 空路径握手：WebView 游戏不占引擎
-
-RPGViewer 同时支持 MV / MZ / Flash / HTML5，这些游戏跑在 `WKWebView` 里，**根本不会用到引擎**。
-
-但引擎从进程启动那刻就在等一个路径。如果玩家先开了 MV 游戏，引擎会一直等；等玩家回头启动 XP 游戏时，它带着一个**空字符串**醒来，`setCurrentDirectory("")` 在 filesystem 初始化里抛异常——崩溃现场和触发它的操作隔着好几分钟、几十个调用栈，看起来完全无关。
-
-解法是给握手加一个「空路径」语义：
+### 2. 空路径握手
 
 ```c
 /* 宿主：这一局不是给你的，但别死，standby */
@@ -150,8 +114,6 @@ if (dataDir_[0] == '\0') {
     snprintf(dataDir_, sizeof(dataDir_), "%s", native);
 }
 ```
-
-**为什么是 standby 而不是退出**：这一局玩了 MV，不代表这个进程不会再有第二个游戏。玩家完全可以回游戏库再开一个 RPG Maker 游戏，那个循环就是交接点。永久退出会让「本次启动的第二个游戏」永远打不开，而这个限制本该属于引擎自身，不该由一个没做错事的 WebView 游戏承担。
 
 ### 3. 三套 Ruby 并行
 
@@ -253,21 +215,6 @@ build/<sdk>-arm64/lib/      宿主 Xcode 工程链接这两个 .a
 
 ---
 
-## 相对上游的改动
-
-本仓库在 `genexix05/mkxp-z-apple-mobile` 之上有四个提交：
-
-| 提交 | 问题 | 根因 | 做法 |
-|---|---|---|---|
-| `c259698` | 旋转后画面缩到左下角 1/3 | `checkResize` 丢弃 `poll` 返回值，点/像素单位混用导致 bsf 3.0→1.0 | 补 scale 换算；ANGLE 尺寸取 layer tree；scale 来源分级 |
-| `9378e88` | 改 `--min-os` 后重建仍报 "Up to date"，产物 minos 还是 26.0 | 增量判断只看时间戳，不看编译参数 | 把 `SDK\|ARCH\|MIN_OS` 写进 `.build-flags`，变了全量重编（54/54） |
-| `8a1cbd8` | 依赖树与上游脱节，部署目标被迫 26.0 | 本地依赖散装，无补丁记录 | 接入上游 `deps/` 体系（Ruby 1.8/1.9/3.1、SDL2、pixman 补丁 + makefile），依赖降到 iOS 15 |
-| `7ac71af` | `sed` / `openssl` 在本机不兼容；WebView 游戏会把引擎带崩 | 环境差异；空路径握手缺失 | deps 适配本机；新增 `mkxp_abandonSession` / `mkxp_waitForNativeGamePath` |
-
-`c259698` 是唯一改到渲染核心的修复，其余三个是构建与生命周期加固。
-
----
-
 ## 踩坑清单
 
 按踩到的顺序记，都是「看起来不可能出错」的那类：
@@ -349,15 +296,8 @@ tools/build-binding-ios.sh --ruby 31 --sdk iphoneos --min-os 15.0 ...
 
 ## 与 App 的边界 / 许可
 
-引擎是 **GPLv2+**（见 `COPYING`）。这意味着：
-
-- 可以自由使用、修改、再分发本仓库，包括商用。
-- 一旦**分发**出去（App Store、TestFlight、直接发 IPA 都算），必须同时提供对应源码。
-- 静态链接 GPL 库的宿主程序，整体会被视为衍生作品。RPGViewer 的 App 侧代码不在此仓库、也不随本仓库授权——但**二进制分发时的源码义务仍然存在**，这是使用 GPL 引擎必须接受的代价，不会因为「App 代码是私有的」而消失。
-
-另外，若开启 `enable-https`（默认开启），还需遵守 OpenSSL 的 Apache v2 条款，实际效果是产物按 GPLv3 分发。详见 `assets/LICENSE.mkxp-z-with-https.txt`。
-
-本仓库不含任何游戏资源，也不含 RPGViewer 的界面代码。
+引擎是 **GPLv2+**（见 `COPYING`）
+本仓库不含任何游戏资源
 
 ---
 
@@ -369,5 +309,3 @@ tools/build-binding-ios.sh --ruby 31 --sdk iphoneos --min-os 15.0 ...
 - **mateo-m** —— `empo-deps`（预编译依赖）、`hmode7`、Empo 的 iOS 实践
 - **JoiPlay** —— Ruby 1.8 / 1.9 的 iOS 补丁基础
 - 以及所有在 issue 和补丁里留下痕迹的人
-
-本仓库新增的修补由 **孔德丰（CrazyPeter）** 完成，见 commit log。
