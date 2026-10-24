@@ -105,4 +105,5 @@ tests/cpp/build/
 /deps/sources/
 /deps/downloads/
 
-./workbuddy
+# Local work directory (agent notes, not part of the engine).
+/.workbuddy/
