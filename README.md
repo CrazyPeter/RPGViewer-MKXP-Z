@@ -2,7 +2,7 @@
 
 > RPGViewer 在 iOS / iPadOS 上跑 RPG Maker XP / VX / VX Ace 用的 mkxp-z 引擎。
 >
-> 本仓库只有引擎。宿主 App、界面与游戏库都不在这里，引擎对外的全部能力收敛在 `src/app_bridge.h`。
+> 本仓库只有引擎。宿主 App 与界面都不在这里，引擎对外的全部能力收敛在 `src/app_bridge.h`。
 
 
 ---
